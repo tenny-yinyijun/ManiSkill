@@ -24,36 +24,54 @@ from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 WARNED_ONCE = False
 
 
-@register_env("BlockingView-v1", max_episode_steps=70, asset_download_ids=["ycb"])
-class BlockingViewEnv(BaseEnv):
+@register_env("Utensil-v1", max_episode_steps=70, asset_download_ids=["ycb"])
+class UtensilEnv(BaseEnv):
 
     SUPPORTED_ROBOTS = ["panda_wristcam"]
+    TARGET_IDS = {"fork": "030_fork", "spoon": "031_spoon", "knife": "032_knife"}
+    TARGET_POS = [0.0, 0.2, 0.05]
+    OBSTACLE_POS = [-0.1, 0.25, 0.05]
+    DISTRACTORS = {
+        "006_mustard_bottle": [0.1, -0.1, 0.1],
+        # "022_windex_bottle": [0.15, 0.05],
+        "025_mug": [0.1, 0.2, 0.08],
+        "033_spatula": [-0.3, -0.1, 0.04],
+        "037_scissors": [0.0, -0.18, 0.03]
+    }
     agent: Union[Panda, PandaWristCam]
     goal_thresh = 0.025
 
     forward_qpos = np.array([
-        # -0.53, 
-        0.0,
-        -1.03, 
+        0.0, 
+        -0.8, 
         0, 
         -3.07, 
         0, 
-        2.77, 
+        2.8, 
         np.pi/4, 
         0.04, 
         0.04])
 
-    def __init__(
+    def __init__( # TODO might need more parameters
         self,
         *args,
         robot_uids="panda_wristcam",
         robot_init_qpos_noise=0.02,
         num_envs=1,
         reconfiguration_freq=None,
+        target_object="fork",
+        has_obstacles=True,
+        has_distractors=True,
+        init_pose = None,
         **kwargs,
     ):
+        if init_pose is not None:
+            self.forward_qpos = init_pose
         self.robot_init_qpos_noise = robot_init_qpos_noise
-        self.model_id = None
+        self.target_id = self.TARGET_IDS[target_object]
+        self.has_obstacles = has_obstacles
+        self.has_distractors = has_distractors
+
         self.all_model_ids = np.array(
             list(
                 load_json(ASSET_DIR / "assets/mani_skill2_ycb/info_pick_v0.json").keys()
@@ -111,40 +129,74 @@ class BlockingViewEnv(BaseEnv):
 
         self._objs: List[Actor] = []
         self.obj_heights = []
+
+        # place the target
+        builder = actors.get_actor_builder(
+            self.scene,
+            id=f"ycb:{self.target_id}",
+        )
+        builder.set_scene_idxs([0])
+        self._objs.append(builder.build(name="target"))
+
+        # place the distractors (if any)
+        if self.has_distractors:
+            for d in self.DISTRACTORS.keys():
+                builder = actors.get_actor_builder(
+                    self.scene,
+                    id=f"ycb:{d}",
+                )
+                builder.set_scene_idxs([0])
+                self._objs.append(builder.build(name=f"{d}"))
+
+        # place the obstacles (if any)
+        if self.has_obstacles:
+            self.obstacle = actors.build_box(
+                self.scene,
+                half_sizes=(0.02, 0.15, 0.2),
+                color=[0.5, 0.5, 0.2, 1],
+                name="obstacle",
+                body_type="dynamic", # static?
+                add_collision=True,
+            )
+            self._objs.append(self.obstacle)
+
+        self.obj = Actor.merge(self._objs, name="ycb_object")
+        
+        
         # scene: one tall block, two objects in front of block, one object hidden behind block. Goal is to reach hidden item.
         # obstacle (block)
-        self.obstacle1 = actors.build_box(
-            self.scene,
-            half_sizes=(0.2, 0.02, 0.2),
-            color=[1, 1, 0, 1],
-            name="obstacle1",
-            body_type="dynamic", # static?
-            add_collision=True,
-        )
-        self._objs.append(self.obstacle1)
+        # self.obstacle1 = actors.build_box(
+        #     self.scene,
+        #     half_sizes=(0.2, 0.02, 0.2),
+        #     color=[1, 1, 0, 1],
+        #     name="obstacle1",
+        #     body_type="dynamic", # static?
+        #     add_collision=True,
+        # )
+        # self._objs.append(self.obstacle1)
 
-        self.obstacle2 = actors.build_box(
-            self.scene,
-            half_sizes=(0.1, 0.02, 0.05),
-            color=[1, 0, 1, 1],
-            name="obstacle2",
-            body_type="dynamic", # static?
-            add_collision=True,
-        )
-        self._objs.append(self.obstacle2)
+        # self.obstacle2 = actors.build_box(
+        #     self.scene,
+        #     half_sizes=(0.1, 0.02, 0.05),
+        #     color=[1, 0, 1, 1],
+        #     name="obstacle2",
+        #     body_type="dynamic", # static?
+        #     add_collision=True,
+        # )
+        # self._objs.append(self.obstacle2)
 
-        model_ids = ['006_mustard_bottle', '024_bowl', '077_rubiks_cube']
-        model_status = {'077_rubiks_cube': "hidden_object", '006_mustard_bottle': "obj1", '024_bowl': "obj2"}
-        for i, model_id in enumerate(model_ids):
-            # TODO: before official release we will finalize a metadata dataclass that these build functions should return.
-            builder = actors.get_actor_builder(
-                self.scene,
-                id=f"ycb:{model_id}",
-            )
-            builder.set_scene_idxs([0])
-            self._objs.append(builder.build(name=f"{model_status[model_id]}"))
+        # model_ids = ['006_mustard_bottle', '024_bowl', '077_rubiks_cube']
+        # model_status = {'077_rubiks_cube': "hidden_object", '006_mustard_bottle': "obj1", '024_bowl': "obj2"}
+        # for i, model_id in enumerate(model_ids):
+        #     # TODO: before official release we will finalize a metadata dataclass that these build functions should return.
+        #     builder = actors.get_actor_builder(
+        #         self.scene,
+        #         id=f"ycb:{model_id}",
+        #     )
+        #     builder.set_scene_idxs([0])
+        #     self._objs.append(builder.build(name=f"{model_status[model_id]}"))
         
-        self.obj = Actor.merge(self._objs, name="ycb_object")
+        # self.obj = Actor.merge(self._objs, name="ycb_object")
 
         self.goal_site = actors.build_sphere(
             self.scene,
@@ -164,32 +216,36 @@ class BlockingViewEnv(BaseEnv):
             self.object_zs.append(-collision_mesh.bounding_box.bounds[0, 2])
         self.object_zs = common.to_tensor(self.object_zs)
 
+    def _angle_to_quat(self, angle):
+        # angle is counterclockwise w.r.t. z-axis
+        return torch.tensor([np.cos(angle / 2), 0, 0, np.sin(angle / 2)])
+    
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
         with torch.device(self.device):
             b = len(env_idx)
             self.table_scene.initialize(env_idx)
-            xyz = torch.zeros((b, 3))
-            xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
-            xyz[:, 2] = 0.05#self.object_zs[env_idx]
+            # xyz = torch.zeros((b, 3))
+            # xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
+            # xyz[:, 2] = 0.05 #self.object_zs[env_idx]
 
-            qs = random_quaternions(b, lock_x=True, lock_y=True)
-
-            object_positions = {
-                "obj1": torch.tensor([0.1, 0.1]),
-                "obj2": torch.tensor([-0.1, 0.1]),
-                "hidden_object": torch.tensor([0.0, 0.6]),
-                "obstacle1": torch.tensor([0.0, 0.5]),
-                "obstacle2": torch.tensor([0.0, -0.5])
-            }
-
-            for idx, obj in enumerate(self._objs):
+            for obj in self._objs:
                 xyz = torch.zeros((b, 3))
-                xyz[:, :2] = object_positions[obj.name]
-                xyz[:, 2] = self.object_zs[env_idx]
-
                 qs = torch.zeros((b, 4))
+                if obj.name == "target":
+                    xyzpos = torch.tensor(self.TARGET_POS)
+                    qs = self._angle_to_quat(-np.pi/2)
 
-                qs[:,3] = 1
+                elif obj.name == "obstacle":
+                    xyzpos = torch.tensor(self.OBSTACLE_POS)
+                    qs[:,3] = 1
+
+                else:
+                    xyzpos = torch.tensor(self.DISTRACTORS[obj.name])
+                    qs[:,3] = 1
+
+                xyz[:] = xyzpos
+                # xyz[:, 2] = self.object_zs[env_idx]
+
                 init_pose = Pose.create_from_pq(p=xyz, q=qs)
 
                 obj.set_pose(init_pose)

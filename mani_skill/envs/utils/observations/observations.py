@@ -33,6 +33,7 @@ def sensor_data_to_pointcloud(observation: Dict, sensors: Dict[str, BaseSensor])
             position = images["position"].clone()
             segmentation = images["segmentation"].clone()
             position = position.float()
+            
             position[..., :3] = (
                 position[..., :3] / 1000.0
             )  # convert the raw depth from millimeters to meters

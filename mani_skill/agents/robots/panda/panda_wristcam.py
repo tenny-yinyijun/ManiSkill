@@ -22,11 +22,11 @@ class PandaWristCam(Panda):
             CameraConfig(
                 uid="hand_camera",
                 pose=sapien.Pose(p=[0, 0, 0], q=[1, 0, 0, 0]),
-                width=1280,
-                height=720,
-                fov=np.pi / 4,
+                width=512,
+                height=512,
+                fov=np.pi / 3,
                 near=0.01,
-                far=5,
+                far=2,
                 mount=self.robot.links_map["camera_link"],
             )
         ]

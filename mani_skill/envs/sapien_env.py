@@ -179,6 +179,7 @@ class BaseEnv(gym.Env):
         reconfiguration_freq: int = None,
         sim_backend: str = "auto",
         render_backend: str = "gpu",
+        gen_seed: int = 2022,
 
         parallel_in_single_scene: bool = False,
     ):
@@ -298,11 +299,11 @@ class BaseEnv(gym.Env):
 
         # Use a fixed (main) seed to enhance determinism
         self._main_seed = None
-        self._set_main_rng(2022)
+        self._set_main_rng(gen_seed)
         self._elapsed_steps = (
             torch.zeros(self.num_envs, device=self.device, dtype=torch.int32)
         )
-        obs, _ = self.reset(seed=2022, options=dict(reconfigure=True))
+        obs, _ = self.reset(seed=gen_seed, options=dict(reconfigure=True))
 
         self._init_raw_obs = common.to_cpu_tensor(obs)
         """the raw observation returned by the env.reset (a cpu torch tensor/dict of tensors). Useful for future observation wrappers to use to auto generate observation spaces"""

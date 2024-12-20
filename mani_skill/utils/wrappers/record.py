@@ -451,6 +451,7 @@ class RecordEpisode(gym.Wrapper):
                     self._trajectory_buffer.reward,
                     common.to_numpy(common.batch(rew)),
                 )
+            print(common.to_numpy(common.batch(terminated)))
             self._trajectory_buffer.terminated = common.append_dict_array(
                 self._trajectory_buffer.terminated,
                 common.to_numpy(common.batch(terminated)),

@@ -24,7 +24,7 @@ class PickClutterEnv(BaseEnv):
     """Base environment picking items out of clutter type of tasks. Flexibly supports using different configurations and object datasets"""
 
     SUPPORTED_REWARD_MODES = ["sparse", "none"]
-    SUPPORTED_ROBOTS = ["panda", "fetch"]
+    SUPPORTED_ROBOTS = ["panda", "panda_wristcam", "fetch"]
     agent: Union[Panda, Fetch]
 
     DEFAULT_EPISODE_JSON: str
@@ -34,7 +34,7 @@ class PickClutterEnv(BaseEnv):
     def __init__(
         self,
         *args,
-        robot_uids="panda",
+        robot_uids="panda_wristcam",
         robot_init_qpos_noise=0.02,
         num_envs=1,
         reconfiguration_freq=None,

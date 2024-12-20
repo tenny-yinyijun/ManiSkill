@@ -93,6 +93,7 @@ def append_dict_array(
                 x2 = x2[:, None, :]
             elif x1.shape[0] == 1:
                 x2 = x2[None, ...]
+        print(x1.shape, x2.shape)
         return np.concatenate([x1, x2])
     elif isinstance(x1, list):
         return x1 + x2

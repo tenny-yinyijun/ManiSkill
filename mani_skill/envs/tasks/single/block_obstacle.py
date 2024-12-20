@@ -24,41 +24,25 @@ from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
 WARNED_ONCE = False
 
 
-@register_env("BlockingView-v1", max_episode_steps=70, asset_download_ids=["ycb"])
-class BlockingViewEnv(BaseEnv):
+@register_env("BlockObstacle-v1", max_episode_steps=50, asset_download_ids=["ycb"])
+class BlockObstacleEnv(BaseEnv):
 
-    SUPPORTED_ROBOTS = ["panda_wristcam"]
-    agent: Union[Panda, PandaWristCam]
-    goal_thresh = 0.025
-
-    forward_qpos = np.array([
-        # -0.53, 
-        0.0,
-        -1.03, 
-        0, 
-        -3.07, 
-        0, 
-        2.77, 
-        np.pi/4, 
-        0.04, 
-        0.04])
+    SUPPORTED_ROBOTS = ["panda", "panda_wristcam", "fetch"]
+    agent: Union[Panda, PandaWristCam, Fetch]
+    goal_thresh = 0.005 # goal radius
 
     def __init__(
         self,
         *args,
         robot_uids="panda_wristcam",
-        robot_init_qpos_noise=0.02,
+        robot_init_qpos_noise=0.00,
         num_envs=1,
         reconfiguration_freq=None,
         **kwargs,
     ):
         self.robot_init_qpos_noise = robot_init_qpos_noise
-        self.model_id = None
-        self.all_model_ids = np.array(
-            list(
-                load_json(ASSET_DIR / "assets/mani_skill2_ycb/info_pick_v0.json").keys()
-            )
-        )
+        self.model_id = "006_mustard_bottle"
+
         if reconfiguration_freq is None:
             if num_envs == 1:
                 reconfiguration_freq = 1
@@ -89,67 +73,34 @@ class BlockingViewEnv(BaseEnv):
         )
         self.table_scene.build()
 
-        # randomize the list of all possible models in the YCB dataset
-        # then sub-scene i will load model model_ids[i % number_of_ycb_objects]
-        rand_idx = torch.randperm(len(self.all_model_ids))
-        model_ids = self.all_model_ids[rand_idx]
-        model_ids = np.concatenate(
-            [model_ids] * np.ceil(self.num_envs / len(self.all_model_ids)).astype(int)
-        )[: self.num_envs]
-        if (
-            self.num_envs > 1
-            and self.num_envs < len(self.all_model_ids)
-            and self.reconfiguration_freq <= 0
-            and not WARNED_ONCE
-        ):
-            WARNED_ONCE = True
-            print(
-                """There are less parallel environments than total available models to sample.
-                Not all models will be used during interaction even after resets unless you call env.reset(options=dict(reconfigure=True))
-                or set reconfiguration_freq to be > 1."""
-            )
-
+        # add object
         self._objs: List[Actor] = []
-        self.obj_heights = []
-        # scene: one tall block, two objects in front of block, one object hidden behind block. Goal is to reach hidden item.
-        # obstacle (block)
+        for i in range(self.num_envs):
+            builder = actors.get_actor_builder(
+                self.scene,
+                id=f"ycb:{self.model_id}",
+            )
+            builder.set_scene_idxs([i])
+            self._objs.append(builder.build(name=f"{self.model_id}"))
+
+        # add obstacle
         self.obstacle1 = actors.build_box(
             self.scene,
-            half_sizes=(0.2, 0.02, 0.2),
-            color=[1, 1, 0, 1],
+            half_sizes=(0.02, 0.1, 0.08),
+            color=[1, 0.3, 1, 1],
             name="obstacle1",
             body_type="dynamic", # static?
             add_collision=True,
         )
         self._objs.append(self.obstacle1)
 
-        self.obstacle2 = actors.build_box(
-            self.scene,
-            half_sizes=(0.1, 0.02, 0.05),
-            color=[1, 0, 1, 1],
-            name="obstacle2",
-            body_type="dynamic", # static?
-            add_collision=True,
-        )
-        self._objs.append(self.obstacle2)
-
-        model_ids = ['006_mustard_bottle', '024_bowl', '077_rubiks_cube']
-        model_status = {'077_rubiks_cube': "hidden_object", '006_mustard_bottle': "obj1", '024_bowl': "obj2"}
-        for i, model_id in enumerate(model_ids):
-            # TODO: before official release we will finalize a metadata dataclass that these build functions should return.
-            builder = actors.get_actor_builder(
-                self.scene,
-                id=f"ycb:{model_id}",
-            )
-            builder.set_scene_idxs([0])
-            self._objs.append(builder.build(name=f"{model_status[model_id]}"))
-        
         self.obj = Actor.merge(self._objs, name="ycb_object")
 
+        # add goal site
         self.goal_site = actors.build_sphere(
             self.scene,
             radius=self.goal_thresh,
-            color=[0, 0, 0, 0.0],
+            color=[0, 1, 0, 1],
             name="goal_site",
             body_type="kinematic",
             add_collision=False,
@@ -168,19 +119,16 @@ class BlockingViewEnv(BaseEnv):
         with torch.device(self.device):
             b = len(env_idx)
             self.table_scene.initialize(env_idx)
-            xyz = torch.zeros((b, 3))
-            xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
-            xyz[:, 2] = 0.05#self.object_zs[env_idx]
-
-            qs = random_quaternions(b, lock_x=True, lock_y=True)
 
             object_positions = {
-                "obj1": torch.tensor([0.1, 0.1]),
-                "obj2": torch.tensor([-0.1, 0.1]),
-                "hidden_object": torch.tensor([0.0, 0.6]),
-                "obstacle1": torch.tensor([0.0, 0.5]),
-                "obstacle2": torch.tensor([0.0, -0.5])
+                "006_mustard_bottle": torch.tensor([0.0, 0.0]),
+                "obstacle1": torch.tensor([-0.2, 0.0]),
             }
+
+            # xyz = torch.zeros((b, 3))
+            # xyz[:, 2] = self.object_zs[env_idx]
+            # qs = random_quaternions(b, lock_x=True, lock_y=True)
+            # self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))
 
             for idx, obj in enumerate(self._objs):
                 xyz = torch.zeros((b, 3))
@@ -194,9 +142,10 @@ class BlockingViewEnv(BaseEnv):
 
                 obj.set_pose(init_pose)
 
-            goal_xyz = torch.zeros((b, 3))
-            goal_xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
-            goal_xyz[:, 2] = torch.rand((b)) * 0.3 + xyz[:, 2]
+
+            goal_xyz = torch.zeros((b, 3)) # goal position fixed to 0,0,0
+            # goal_xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
+            # goal_xyz[:, 2] = torch.rand((b)) * 0.3 + xyz[:, 2]
             self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
 
             # Initialize robot arm to a higher position above the table than the default typically used for other table top tasks
@@ -211,7 +160,6 @@ class BlockingViewEnv(BaseEnv):
                 )
                 self.agent.reset(qpos)
                 self.agent.robot.set_root_pose(sapien.Pose([-0.615, 0, 0]))
-                self.agent.robot.set_qpos(self.forward_qpos)
             elif self.robot_uids == "xmate3_robotiq":
                 qpos = np.array([0, 0.6, 0, 1.3, 0, 1.3, -1.57, 0, 0])
                 qpos[:-2] += self._episode_rng.normal(
@@ -233,8 +181,16 @@ class BlockingViewEnv(BaseEnv):
             is_obj_placed=is_obj_placed,
             is_robot_static=is_robot_static,
             is_grasping=self.agent.is_grasping(self.obj),
-            success=torch.logical_and(is_obj_placed, is_robot_static),
+            success=torch.tensor(False, dtype=torch.bool),
         )
+        # return dict(
+        #     is_grasped=is_grasped,
+        #     obj_to_goal_pos=obj_to_goal_pos,
+        #     is_obj_placed=is_obj_placed,
+        #     is_robot_static=is_robot_static,
+        #     is_grasping=self.agent.is_grasping(self.obj),
+        #     success=torch.logical_and(is_obj_placed, is_robot_static),
+        # )
 
     def _get_obs_extra(self, info: Dict):
         obs = dict(

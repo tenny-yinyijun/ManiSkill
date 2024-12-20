@@ -17,12 +17,13 @@ from mani_skill.utils.structs.types import SimConfig
 
 @register_env("PickCube-v1", max_episode_steps=50)
 class PickCubeEnv(BaseEnv):
-    SUPPORTED_ROBOTS = ["panda", "fetch"]
+    SUPPORTED_ROBOTS = ["panda_wristcam"]
+    # SUPPORTED_ROBOTS = ["panda", "fetch"]
     agent: Union[Panda, Fetch]
     cube_half_size = 0.02
     goal_thresh = 0.025
 
-    def __init__(self, *args, robot_uids="panda", robot_init_qpos_noise=0.02, **kwargs):
+    def __init__(self, *args, robot_uids="panda_wristcam", robot_init_qpos_noise=0.02, **kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 

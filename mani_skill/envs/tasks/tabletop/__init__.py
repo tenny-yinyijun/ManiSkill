@@ -16,3 +16,5 @@ from .place_sphere import PlaceSphereEnv
 from .roll_ball import RollBallEnv
 from .push_t import PushTEnv
 from .blocking_view import BlockingViewEnv
+from .calibration import CalibrationEnv
+from .utensil import UtensilEnv
